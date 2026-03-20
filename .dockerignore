@@ -1,0 +1,6 @@
+.git/
+*.md
+Makefile
+bin/
+agent-os/
+**/*_test.go

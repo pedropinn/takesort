@@ -1,0 +1,12 @@
+services:
+  takesort:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./data/temp:/temp
+      - ./data/media:/media
+    environment:
+      - TAKESORT_DEBOUNCE_INTERVAL=2s
+      - TAKESORT_LOG_LEVEL=info
+    restart: unless-stopped
