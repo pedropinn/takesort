@@ -2,5 +2,6 @@
 *.md
 Makefile
 bin/
+.claude/
 agent-os/
 **/*_test.go

@@ -4,6 +4,7 @@
 *.dll
 *.so
 *.dylib
+./takesort
 
 # Test binary, built with `go test -c`
 *.test
@@ -35,3 +36,5 @@ Thumbs.db
 #AI
 agent-os/
 .claude/
+
+
