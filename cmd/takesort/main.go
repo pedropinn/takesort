@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -118,8 +119,11 @@ func main() {
 		DebounceChecks:   4,
 	})
 
-	// Start watcher in a separate goroutine
+	// Start watcher in a separate goroutine with proper shutdown tracking
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		if err := w.Start(ctx); err != nil {
 			log.Error("watcher error", "error", err)
 		}
@@ -130,5 +134,6 @@ func main() {
 		os.Exit(1)
 	}
 
+	wg.Wait()
 	log.Info("takesort shutdown complete")
 }

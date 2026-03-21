@@ -110,6 +110,10 @@ jobs:
           DH_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
           REPO: takesort
         run: |
+          # Mask credentials from logs
+          echo "::add-mask::${DH_TOKEN}"
+          echo "::add-mask::${DH_USERNAME}"
+
           # Authenticate with Docker Hub API
           JWT=$(curl -s -X POST "https://hub.docker.com/v2/users/login/" \
             -H "Content-Type: application/json" \

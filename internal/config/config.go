@@ -41,6 +41,9 @@ func Load() (*Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid TAKESORT_DEBOUNCE_INTERVAL %q: %w", v, err)
 		}
+		if d <= 0 {
+			return nil, fmt.Errorf("invalid TAKESORT_DEBOUNCE_INTERVAL %q: must be positive", v)
+		}
 		cfg.DebounceInterval = d
 	}
 

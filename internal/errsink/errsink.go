@@ -10,7 +10,7 @@ import (
 
 // MoveToErrors moves src into errorsDir, creating it if needed.
 func MoveToErrors(src string, errorsDir string) error {
-	if err := os.MkdirAll(errorsDir, 0o755); err != nil {
+	if err := os.MkdirAll(errorsDir, 0o750); err != nil {
 		return fmt.Errorf("create errors dir: %w", err)
 	}
 
@@ -22,11 +22,16 @@ func MoveToErrors(src string, errorsDir string) error {
 }
 
 // ShouldRejectFile checks whether a file should be rejected before processing.
+// Uses Lstat to avoid following symlinks.
 // Returns (true, reason) if the file is invalid, or (false, "") if valid.
 func ShouldRejectFile(path string) (bool, string) {
-	info, err := os.Stat(path)
+	info, err := os.Lstat(path)
 	if err != nil {
 		return true, fmt.Sprintf("cannot stat file: %v", err)
+	}
+
+	if info.Mode()&os.ModeSymlink != 0 {
+		return true, "symlink not allowed"
 	}
 
 	if info.Size() == 0 {

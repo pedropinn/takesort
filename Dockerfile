@@ -12,7 +12,7 @@ ARG VERSION=dev
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w -X main.version=${VERSION}" -o /bin/takesort ./cmd/takesort/
 
 # Stage 2: Minimal runtime image
-FROM alpine:latest
+FROM alpine:3.21
 
 RUN addgroup -S takesort && adduser -S takesort -G takesort
 
