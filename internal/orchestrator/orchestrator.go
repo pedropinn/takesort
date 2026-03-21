@@ -10,6 +10,7 @@ import (
 
 	"github.com/pinn/takesort/internal/classifier"
 	"github.com/pinn/takesort/internal/debounce"
+	"github.com/pinn/takesort/internal/safepath"
 )
 
 // FileClassifier classifies a file by its name.
@@ -90,6 +91,12 @@ func New(deps Deps) *Orchestrator {
 func (o *Orchestrator) ProcessFile(path string) error {
 	logger := o.deps.Logger.With("file", filepath.Base(path))
 
+	// 0. Reject symlinks
+	if safepath.IsSymlink(path) {
+		logger.Warn("symlink rejected")
+		return o.deps.ErrorSink.MoveToErrors(path, o.deps.ErrorsDir)
+	}
+
 	// 1. Validate
 	if reject, reason := o.deps.Validator.ShouldReject(path); reject {
 		logger.Warn("file rejected", "reason", reason)
@@ -113,8 +120,8 @@ func (o *Orchestrator) ProcessFile(path string) error {
 		return o.deps.Trash.DeleteTrash(path)
 	}
 
-	// 5. Get ModTime
-	info, err := os.Stat(path)
+	// 5. Get ModTime (Lstat to avoid following symlinks)
+	info, err := os.Lstat(path)
 	if err != nil {
 		logger.Error("stat failed", "error", err)
 		return o.deps.ErrorSink.MoveToErrors(path, o.deps.ErrorsDir)
@@ -164,7 +171,7 @@ func (o *Orchestrator) ProcessFile(path string) error {
 func (o *Orchestrator) Run(ctx context.Context) error {
 	// Create required directories
 	for _, dir := range []string{o.deps.ConflictDir, o.deps.ErrorsDir} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
 			return fmt.Errorf("create dir %s: %w", dir, err)
 		}
 	}

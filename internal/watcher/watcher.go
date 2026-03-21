@@ -3,9 +3,11 @@ package watcher
 import (
 	"context"
 	"log/slog"
+	"path/filepath"
 	"strings"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/pinn/takesort/internal/safepath"
 )
 
 // Watcher monitors a directory for new files using fsnotify.
@@ -56,6 +58,10 @@ func (w *Watcher) Start(ctx context.Context) error {
 				w.logger.Debug("ignoring event in excluded dir", "path", event.Name)
 				continue
 			}
+			if safepath.IsSymlink(event.Name) {
+				w.logger.Warn("ignoring symlink", "path", event.Name)
+				continue
+			}
 			w.logger.Info("file detected", "path", event.Name)
 			w.events <- event.Name
 		case err, ok := <-fsw.Errors:
@@ -73,8 +79,10 @@ func (w *Watcher) Events() <-chan string {
 }
 
 func (w *Watcher) isIgnored(path string) bool {
+	cleanPath := filepath.Clean(path)
 	for _, dir := range w.ignoreDirs {
-		if strings.HasPrefix(path, dir) {
+		cleanDir := filepath.Clean(dir)
+		if strings.HasPrefix(cleanPath, cleanDir+string(filepath.Separator)) || cleanPath == cleanDir {
 			return true
 		}
 	}

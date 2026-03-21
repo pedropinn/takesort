@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/pinn/takesort/internal/classifier"
+	"github.com/pinn/takesort/internal/safepath"
 )
 
 // subfolders maps each FileType to its destination subdirectory.
@@ -37,9 +38,13 @@ func BuildDestPath(mediaDir string, modTime time.Time, fileType classifier.FileT
 }
 
 // MoveFile moves the file at src into destDir, creating destDir if needed.
-// Falls back to copy+delete when src and destDir are on different devices.
+// Rejects symlinks. Falls back to copy+delete when src and destDir are on different devices.
 func MoveFile(src string, destDir string) error {
-	if err := os.MkdirAll(destDir, 0o755); err != nil {
+	if safepath.IsSymlink(src) {
+		return fmt.Errorf("refusing to move symlink: %s", src)
+	}
+
+	if err := os.MkdirAll(destDir, 0o750); err != nil {
 		return fmt.Errorf("create dest dir: %w", err)
 	}
 
@@ -76,20 +81,19 @@ func copyAndDelete(src, dst string) error {
 	return nil
 }
 
-// copyFile copies the content and permissions of src to dst.
+// copyFile copies the content of src to dst with restrictive permissions.
 func copyFile(src, dst string) error {
+	if safepath.IsSymlink(src) {
+		return fmt.Errorf("refusing to copy symlink: %s", src)
+	}
+
 	srcFile, err := os.Open(src)
 	if err != nil {
 		return fmt.Errorf("open source: %w", err)
 	}
 	defer func() { _ = srcFile.Close() }()
 
-	info, err := srcFile.Stat()
-	if err != nil {
-		return fmt.Errorf("stat source: %w", err)
-	}
-
-	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode())
+	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o640)
 	if err != nil {
 		return fmt.Errorf("create dest: %w", err)
 	}

@@ -8,14 +8,15 @@ import (
 )
 
 // HasConflict reports whether a file already exists at destPath.
+// Uses Lstat to avoid following symlinks.
 func HasConflict(destPath string) bool {
-	_, err := os.Stat(destPath)
+	_, err := os.Lstat(destPath)
 	return err == nil
 }
 
 // MoveToConflicts moves src into conflictsDir, creating it if needed.
 func MoveToConflicts(src string, conflictsDir string) error {
-	if err := os.MkdirAll(conflictsDir, 0o755); err != nil {
+	if err := os.MkdirAll(conflictsDir, 0o750); err != nil {
 		return fmt.Errorf("create conflicts dir: %w", err)
 	}
 

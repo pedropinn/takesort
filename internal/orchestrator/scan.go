@@ -16,7 +16,7 @@ func ScanExisting(dir string, ignoreDirs []string) ([]string, error) {
 
 	var files []string
 	for _, e := range entries {
-		if e.IsDir() {
+		if e.IsDir() || e.Type()&os.ModeSymlink != 0 {
 			continue
 		}
 

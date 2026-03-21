@@ -7,10 +7,16 @@ import (
 	"strings"
 
 	"github.com/pinn/takesort/internal/mover"
+	"github.com/pinn/takesort/internal/safepath"
 )
 
 // ProcessProxy renames a proxy file (.lrf/.lrv) to .mp4 and moves it to destDir.
+// Rejects symlinks.
 func ProcessProxy(src string, destDir string) error {
+	if safepath.IsSymlink(src) {
+		return fmt.Errorf("refusing to process symlink: %s", src)
+	}
+
 	base := filepath.Base(src)
 	ext := filepath.Ext(base)
 	name := strings.TrimSuffix(base, ext)

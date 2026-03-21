@@ -16,7 +16,7 @@ func WaitForStability(path string, interval time.Duration, checks int) error {
 	stable := 0
 
 	for stable < checks {
-		info, err := os.Stat(path)
+		info, err := os.Lstat(path)
 		if err != nil {
 			if os.IsNotExist(err) {
 				return ErrFileDisappeared
