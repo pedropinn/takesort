@@ -103,3 +103,59 @@ jobs:
             VERSION=${{ steps.tags-main.outputs.version || steps.tags-develop.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Cleanup old Docker Hub tags
+        env:
+          DH_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DH_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          REPO: takesort
+        run: |
+          # Authenticate with Docker Hub API
+          JWT=$(curl -s -X POST "https://hub.docker.com/v2/users/login/" \
+            -H "Content-Type: application/json" \
+            -d "{\"username\":\"${DH_USERNAME}\",\"password\":\"${DH_TOKEN}\"}" \
+            | jq -r .token)
+
+          if [ "$JWT" = "null" ] || [ -z "$JWT" ]; then
+            echo "Warning: Docker Hub auth failed, skipping cleanup"
+            exit 0
+          fi
+
+          # Fetch all tags sorted by last_updated (newest first)
+          TAGS_JSON=$(curl -s "https://hub.docker.com/v2/repositories/${DH_USERNAME}/${REPO}/tags/?page_size=100&ordering=-last_updated" \
+            -H "Authorization: Bearer ${JWT}")
+
+          delete_tag() {
+            local tag=$1
+            echo "Deleting tag: ${tag}"
+            curl -s -X DELETE "https://hub.docker.com/v2/repositories/${DH_USERNAME}/${REPO}/tags/${tag}/" \
+              -H "Authorization: Bearer ${JWT}"
+          }
+
+          if [ "${{ github.ref }}" = "refs/heads/develop" ]; then
+            # Keep max 2 dev-{sha} tags (exclude dev-latest)
+            KEEP=2
+            DEV_TAGS=$(echo "$TAGS_JSON" | jq -r '.results[].name' | grep '^dev-' | grep -v '^dev-latest$')
+            COUNT=0
+            for tag in $DEV_TAGS; do
+              COUNT=$((COUNT + 1))
+              if [ "$COUNT" -gt "$KEEP" ]; then
+                delete_tag "$tag"
+              fi
+            done
+            echo "Dev cleanup: kept $KEEP, deleted $((COUNT > KEEP ? COUNT - KEEP : 0))"
+          fi
+
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            # Keep max 4 semver tags vX.Y.Z (exclude latest and vX.Y aliases)
+            KEEP=4
+            SEMVER_TAGS=$(echo "$TAGS_JSON" | jq -r '.results[].name' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$')
+            COUNT=0
+            for tag in $SEMVER_TAGS; do
+              COUNT=$((COUNT + 1))
+              if [ "$COUNT" -gt "$KEEP" ]; then
+                delete_tag "$tag"
+              fi
+            done
+            echo "Production cleanup: kept $KEEP, deleted $((COUNT > KEEP ? COUNT - KEEP : 0))"
+          fi
