@@ -20,7 +20,7 @@ import (
 	"github.com/pinn/takesort/internal/watcher"
 )
 
-const version = "0.1.0"
+var version = "dev"
 
 // Adapters bridge package-level functions to the orchestrator interfaces.
 

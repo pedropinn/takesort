@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests
+        run: go test ./... -v
+
+  release:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version (main only)
+        if: github.ref == 'refs/heads/main'
+        id: version
+        run: |
+          git fetch --tags
+          LATEST_TAG=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo "v0.0.0")
+          echo "Latest tag: $LATEST_TAG"
+
+          VERSION="${LATEST_TAG#v}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+
+          PATCH=$((PATCH + 1))
+          NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "New version: $NEW_VERSION"
+
+          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "major_minor=v${MAJOR}.${MINOR}" >> "$GITHUB_OUTPUT"
+
+      - name: Create git tag (main only)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ steps.version.outputs.new_version }}
+          git push origin ${{ steps.version.outputs.new_version }}
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Compute Docker tags (main)
+        if: github.ref == 'refs/heads/main'
+        id: tags-main
+        run: |
+          IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/takesort"
+          VERSION="${{ steps.version.outputs.new_version }}"
+          MAJOR_MINOR="${{ steps.version.outputs.major_minor }}"
+          TAGS="${IMAGE}:latest,${IMAGE}:${VERSION},${IMAGE}:${MAJOR_MINOR}"
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Compute Docker tags (develop)
+        if: github.ref == 'refs/heads/develop'
+        id: tags-develop
+        run: |
+          IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/takesort"
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          TAGS="${IMAGE}:dev-latest,${IMAGE}:dev-${SHORT_SHA}"
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+          echo "version=dev-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.tags-main.outputs.tags || steps.tags-develop.outputs.tags }}
+          build-args: |
+            VERSION=${{ steps.tags-main.outputs.version || steps.tags-develop.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
