@@ -32,7 +32,7 @@ func (w *Watcher) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer fsw.Close()
+	defer func() { _ = fsw.Close() }()
 
 	if err := fsw.Add(w.watchDir); err != nil {
 		return err
