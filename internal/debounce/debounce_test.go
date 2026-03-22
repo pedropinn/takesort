@@ -1,6 +1,7 @@
 package debounce_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,7 +17,7 @@ func TestWaitForStability_StableFileReturnsNil(t *testing.T) {
 	f := filepath.Join(tmpDir, "stable.mp4")
 	require.NoError(t, os.WriteFile(f, []byte("video content"), 0o644))
 
-	err := debounce.WaitForStability(f, 50*time.Millisecond, 4)
+	err := debounce.WaitForStability(context.Background(), f, 50*time.Millisecond, 4)
 
 	assert.NoError(t, err)
 }
@@ -28,7 +29,7 @@ func TestWaitForStability_ChangingSizeResetsCounter(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- debounce.WaitForStability(f, 50*time.Millisecond, 4)
+		done <- debounce.WaitForStability(context.Background(), f, 50*time.Millisecond, 4)
 	}()
 
 	// Grow the file after two checks (~100ms)
@@ -46,7 +47,7 @@ func TestWaitForStability_FileDisappearedReturnsError(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- debounce.WaitForStability(f, 50*time.Millisecond, 4)
+		done <- debounce.WaitForStability(context.Background(), f, 50*time.Millisecond, 4)
 	}()
 
 	// Remove the file after a short delay
@@ -63,11 +64,28 @@ func TestWaitForStability_ConfigurableInterval(t *testing.T) {
 	require.NoError(t, os.WriteFile(f, []byte("content"), 0o644))
 
 	start := time.Now()
-	err := debounce.WaitForStability(f, 30*time.Millisecond, 4)
+	err := debounce.WaitForStability(context.Background(), f, 30*time.Millisecond, 4)
 	elapsed := time.Since(start)
 
 	require.NoError(t, err)
-	// 4 checks at 30ms intervals: minimum ~120ms (first check is immediate, then 3 waits)
-	// Actually: check, wait, check, wait, check, wait, check = 3 waits minimum
-	assert.GreaterOrEqual(t, elapsed.Milliseconds(), int64(80))
+	assert.GreaterOrEqual(t, elapsed.Milliseconds(), int64(110))
+}
+
+func TestWaitForStability_ContextCancellation(t *testing.T) {
+	tmpDir := t.TempDir()
+	f := filepath.Join(tmpDir, "cancel.mp4")
+	require.NoError(t, os.WriteFile(f, []byte("data"), 0o644))
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan error, 1)
+	go func() {
+		done <- debounce.WaitForStability(ctx, f, 5*time.Second, 10)
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+
+	err := <-done
+	assert.ErrorIs(t, err, context.Canceled)
 }

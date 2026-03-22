@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 )
 
@@ -12,6 +13,7 @@ const (
 	defaultMediaDir = "/media"
 
 	defaultDebounceInterval = 2 * time.Second
+	defaultDebounceChecks   = 5
 	defaultLogLevel         = "info"
 )
 
@@ -30,6 +32,7 @@ type Config struct {
 	ErrorsDir    string
 
 	DebounceInterval time.Duration
+	DebounceChecks   int
 	LogLevel         string
 }
 
@@ -39,6 +42,7 @@ func Load() (*Config, error) {
 		WatchDir:         defaultWatchDir,
 		MediaDir:         defaultMediaDir,
 		DebounceInterval: defaultDebounceInterval,
+		DebounceChecks:   defaultDebounceChecks,
 		LogLevel:         defaultLogLevel,
 	}
 
@@ -62,6 +66,17 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("invalid TAKESORT_DEBOUNCE_INTERVAL %q: must be positive", v)
 		}
 		cfg.DebounceInterval = d
+	}
+
+	if v := os.Getenv("TAKESORT_DEBOUNCE_CHECKS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid TAKESORT_DEBOUNCE_CHECKS %q: %w", v, err)
+		}
+		if n < 1 {
+			return nil, fmt.Errorf("invalid TAKESORT_DEBOUNCE_CHECKS %q: must be >= 1", v)
+		}
+		cfg.DebounceChecks = n
 	}
 
 	if v := os.Getenv("TAKESORT_LOG_LEVEL"); v != "" {

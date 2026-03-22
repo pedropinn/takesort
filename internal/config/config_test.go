@@ -11,6 +11,7 @@ import (
 
 func TestLoad_DefaultValues(t *testing.T) {
 	t.Setenv("TAKESORT_DEBOUNCE_INTERVAL", "")
+	t.Setenv("TAKESORT_DEBOUNCE_CHECKS", "")
 	t.Setenv("TAKESORT_LOG_LEVEL", "")
 	t.Setenv("TAKESORT_WATCH_DIR", "")
 	t.Setenv("TAKESORT_MEDIA_DIR", "")
@@ -23,6 +24,7 @@ func TestLoad_DefaultValues(t *testing.T) {
 	assert.Equal(t, "/media/temp/conflicts", cfg.ConflictsDir)
 	assert.Equal(t, "/media/temp/errors", cfg.ErrorsDir)
 	assert.Equal(t, 2*time.Second, cfg.DebounceInterval)
+	assert.Equal(t, 5, cfg.DebounceChecks)
 	assert.Equal(t, "info", cfg.LogLevel)
 }
 
@@ -57,4 +59,40 @@ func TestLoad_InvalidDebounceInterval(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "TAKESORT_DEBOUNCE_INTERVAL")
+}
+
+func TestLoad_CustomDebounceChecks(t *testing.T) {
+	t.Setenv("TAKESORT_DEBOUNCE_CHECKS", "8")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, 8, cfg.DebounceChecks)
+}
+
+func TestLoad_InvalidDebounceChecks_Zero(t *testing.T) {
+	t.Setenv("TAKESORT_DEBOUNCE_CHECKS", "0")
+
+	_, err := config.Load()
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "TAKESORT_DEBOUNCE_CHECKS")
+}
+
+func TestLoad_InvalidDebounceChecks_Negative(t *testing.T) {
+	t.Setenv("TAKESORT_DEBOUNCE_CHECKS", "-1")
+
+	_, err := config.Load()
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "TAKESORT_DEBOUNCE_CHECKS")
+}
+
+func TestLoad_InvalidDebounceChecks_NonNumeric(t *testing.T) {
+	t.Setenv("TAKESORT_DEBOUNCE_CHECKS", "abc")
+
+	_, err := config.Load()
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "TAKESORT_DEBOUNCE_CHECKS")
 }
