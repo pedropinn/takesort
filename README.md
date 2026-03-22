@@ -2,15 +2,16 @@
 
 Uma maneira facil de organizar suas filmagens. Copie tudo para uma pasta e o TakeSort se encarrega de organizar os arquivos para voce.
 
-Ele monitora a pasta de entrada e move cada arquivo para `{TAKESORT_MEDIA_DIR}/{ano}/{ano-mes-dia}/` conforme o tipo:
+Monitora a pasta `/media/temp` e move cada arquivo para `/media/{YYYY}/{YYYY-MM-DD}/` conforme o tipo:
+
 
 | Extensao | Destino |
 |----------|---------|
-| `.mp4` | `{data}/` |
-| `.jpg` | `{data}/photos/jpeg/` |
-| `.dng` | `{data}/photos/raw/` |
-| `.wav` | `{data}/audio/` |
-| `.lrf`, `.lrv` | `{data}/proxy/` |
+| `.mp4` | `{YYYY-MM-DD}/` |
+| `.jpg` | `{YYYY-MM-DD}/photos/jpeg/` |
+| `.dng` | `{YYYY-MM-DD}/photos/raw/` |
+| `.wav` | `{YYYY-MM-DD}/audio/` |
+| `.lrf`, `.lrv` | `{YYYY-MM-DD}/proxy/` |
 | `.thm`, `.srt` | Deletado |
 
 ## Docker Compose

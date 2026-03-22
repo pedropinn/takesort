@@ -87,6 +87,7 @@ func main() {
 	log.Info("takesort starting",
 		"version", version,
 		"debounce_interval", cfg.DebounceInterval,
+		"debounce_checks", cfg.DebounceChecks,
 		"log_level", cfg.LogLevel,
 		"watch_dir", cfg.WatchDir,
 		"media_dir", cfg.MediaDir,
@@ -116,7 +117,7 @@ func main() {
 		ConflictDir:      cfg.ConflictsDir,
 		ErrorsDir:        cfg.ErrorsDir,
 		DebounceInterval: cfg.DebounceInterval,
-		DebounceChecks:   4,
+		DebounceChecks:   cfg.DebounceChecks,
 	})
 
 	// Start watcher in a separate goroutine with proper shutdown tracking

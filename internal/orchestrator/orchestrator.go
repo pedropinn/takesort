@@ -194,7 +194,8 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	} else if len(orphans) > 0 {
 		o.deps.Logger.Info("processing orphan files", "count", len(orphans))
 		for _, path := range orphans {
-			if err := debounce.WaitForStability(path, o.deps.DebounceInterval, o.deps.DebounceChecks); err != nil {
+			o.deps.Logger.Debug("debounce started", "path", path)
+			if err := debounce.WaitForStability(ctx, path, o.deps.DebounceInterval, o.deps.DebounceChecks); err != nil {
 				if err == debounce.ErrFileDisappeared {
 					o.deps.Logger.Warn("orphan file disappeared during debounce", "path", path)
 					continue
@@ -202,6 +203,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 				o.deps.Logger.Error("orphan debounce error", "path", path, "error", err)
 				continue
 			}
+			o.deps.Logger.Debug("debounce complete", "path", path)
 			if err := o.ProcessFile(path); err != nil {
 				o.deps.Logger.Error("orphan process error", "path", path, "error", err)
 			}
@@ -218,7 +220,8 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			if !ok {
 				return nil
 			}
-			if err := debounce.WaitForStability(path, o.deps.DebounceInterval, o.deps.DebounceChecks); err != nil {
+			o.deps.Logger.Debug("debounce started", "path", path)
+			if err := debounce.WaitForStability(ctx, path, o.deps.DebounceInterval, o.deps.DebounceChecks); err != nil {
 				if err == debounce.ErrFileDisappeared {
 					o.deps.Logger.Warn("file disappeared during debounce", "path", path)
 					continue
@@ -226,6 +229,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 				o.deps.Logger.Error("debounce error", "path", path, "error", err)
 				continue
 			}
+			o.deps.Logger.Debug("debounce complete", "path", path)
 			if err := o.ProcessFile(path); err != nil {
 				o.deps.Logger.Error("process file error", "path", path, "error", err)
 			}

@@ -73,6 +73,7 @@ On startup, orphan files already in `/temp` are scanned and processed through th
 | `TAKESORT_WATCH_DIR` | `/media/temp` | Directory to watch for new files |
 | `TAKESORT_MEDIA_DIR` | `/media` | Root directory for organized output |
 | `TAKESORT_DEBOUNCE_INTERVAL` | `2s` | Interval between file size checks |
+| `TAKESORT_DEBOUNCE_CHECKS` | `5` | Number of consecutive stable size checks before processing |
 | `TAKESORT_LOG_LEVEL` | `info` | Log level (debug, info, warn, error) |
 
 `ConflictsDir` and `ErrorsDir` are derived automatically: `{WatchDir}/conflicts` and `{WatchDir}/errors`. For best performance, mount watch and media dirs on the same filesystem so `os.Rename` works without copy.
