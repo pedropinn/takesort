@@ -1,10 +1,8 @@
 package debounce_test
 
 import (
-	"bufio"
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -73,34 +71,29 @@ func TestWaitForStability_ConfigurableInterval(t *testing.T) {
 	assert.GreaterOrEqual(t, elapsed.Milliseconds(), int64(110))
 }
 
-func TestWaitForStability_LockedFileResetsCounter(t *testing.T) {
-	tmpDir := t.TempDir()
-	f := filepath.Join(tmpDir, "locked.mp4")
+func TestWaitForStability_ChangingCtimeResetsCounter(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "ctime.mp4")
 	require.NoError(t, os.WriteFile(f, []byte("video data"), 0o644))
-
-	// Spawn subprocess to hold a POSIX write lock (fcntl locks are per-process)
-	cmd := exec.Command(os.Args[0], "-test.run=^TestHelperProcess$")
-	cmd.Env = append(os.Environ(), "GO_HELPER_LOCK_FILE="+f)
-	stdout, err := cmd.StdoutPipe()
-	require.NoError(t, err)
-	require.NoError(t, cmd.Start())
-
-	// Wait for subprocess to acquire lock
-	scanner := bufio.NewScanner(stdout)
-	require.True(t, scanner.Scan(), "subprocess did not emit 'locked' signal")
 
 	done := make(chan error, 1)
 	go func() {
-		done <- debounce.WaitForStability(context.Background(), f, 50*time.Millisecond, 3)
+		done <- debounce.WaitForStability(context.Background(), f, 50*time.Millisecond, 4)
 	}()
 
-	// Release lock after 200ms by killing subprocess
-	time.Sleep(200 * time.Millisecond)
-	require.NoError(t, cmd.Process.Kill())
-	_ = cmd.Wait()
+	// After ~110ms (2 checks done), change ctime without changing size.
+	// chmod updates ctime only, which should reset the stability counter.
+	time.Sleep(110 * time.Millisecond)
+	require.NoError(t, os.Chmod(f, 0o600))
 
-	err = <-done
+	start := time.Now()
+	err := <-done
+	elapsed := time.Since(start)
+
 	assert.NoError(t, err)
+	// After the chmod at ~110ms, 4 more stable checks needed (4×50ms = 200ms).
+	// So total elapsed from the chmod should be at least ~200ms.
+	assert.GreaterOrEqual(t, elapsed.Milliseconds(), int64(150),
+		"ctime change should have reset the stability counter")
 }
 
 func TestWaitForStability_ContextCancellation(t *testing.T) {
