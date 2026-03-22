@@ -39,6 +39,11 @@ type TrashDeleter interface {
 	DeleteTrash(path string) error
 }
 
+// UnknownDeleter deletes an unknown file.
+type UnknownDeleter interface {
+	DeleteUnknown(path string) error
+}
+
 // ConflictChecker detects and handles file name conflicts.
 type ConflictChecker interface {
 	HasConflict(destPath string) bool
@@ -55,6 +60,11 @@ type EventSource interface {
 	Events() <-chan string
 }
 
+// DirCleaner removes empty directories from a root directory.
+type DirCleaner interface {
+	CleanEmptyDirs(rootDir string, ignoreDirs []string) error
+}
+
 // Deps holds all injected dependencies for the Orchestrator.
 type Deps struct {
 	Classifier       FileClassifier
@@ -62,9 +72,11 @@ type Deps struct {
 	Mover            FileMover
 	Proxy            ProxyProcessor
 	Trash            TrashDeleter
+	UnknownDeleter   UnknownDeleter
 	Conflict         ConflictChecker
 	ErrorSink        ErrorSink
 	Watcher          EventSource
+	DirCleaner       DirCleaner
 	Logger           *slog.Logger
 	MediaDir         string
 	WatchDir         string
@@ -108,10 +120,10 @@ func (o *Orchestrator) ProcessFile(path string) error {
 	logger = logger.With("type", ft)
 	logger.Info("file classified")
 
-	// 3. Unknown -> errors
+	// 3. Unknown -> delete
 	if ft == classifier.Unknown {
-		logger.Warn("unknown file type, moving to errors")
-		return o.deps.ErrorSink.MoveToErrors(path, o.deps.ErrorsDir)
+		logger.Warn("unknown file type, deleting")
+		return o.deps.UnknownDeleter.DeleteUnknown(path)
 	}
 
 	// 4. Trash -> delete
@@ -187,8 +199,10 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		"watch", o.deps.WatchDir,
 	)
 
+	ignoreDirs := []string{o.deps.ConflictDir, o.deps.ErrorsDir}
+
 	// Process orphan files left in watch dir from previous runs
-	orphans, err := ScanExisting(o.deps.WatchDir, []string{o.deps.ConflictDir, o.deps.ErrorsDir})
+	orphans, err := ScanExisting(o.deps.WatchDir, ignoreDirs, o.deps.Logger)
 	if err != nil {
 		o.deps.Logger.Error("scan existing files failed", "error", err)
 	} else if len(orphans) > 0 {
@@ -208,6 +222,11 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 				o.deps.Logger.Error("orphan process error", "path", path, "error", err)
 			}
 		}
+	}
+
+	// Clean up any empty subdirectories left after orphan processing
+	if err := o.deps.DirCleaner.CleanEmptyDirs(o.deps.WatchDir, ignoreDirs); err != nil {
+		o.deps.Logger.Error("cleanup after orphan processing failed", "error", err)
 	}
 
 	events := o.deps.Watcher.Events()
@@ -232,6 +251,11 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			o.deps.Logger.Debug("debounce complete", "path", path)
 			if err := o.ProcessFile(path); err != nil {
 				o.deps.Logger.Error("process file error", "path", path, "error", err)
+			}
+
+			// Clean up any empty subdirectories after processing
+			if err := o.deps.DirCleaner.CleanEmptyDirs(o.deps.WatchDir, ignoreDirs); err != nil {
+				o.deps.Logger.Error("cleanup after file processing failed", "error", err)
 			}
 		}
 	}

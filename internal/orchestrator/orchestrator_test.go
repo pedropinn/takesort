@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/pinn/takesort/internal/classifier"
+	"github.com/pinn/takesort/internal/cleanup"
 	"github.com/pinn/takesort/internal/conflict"
 	"github.com/pinn/takesort/internal/errsink"
 	"github.com/pinn/takesort/internal/mover"
@@ -54,6 +55,12 @@ func (trashAdapter) DeleteTrash(path string) error {
 	return trash.DeleteTrash(path)
 }
 
+type unknownDeleterAdapter struct{}
+
+func (unknownDeleterAdapter) DeleteUnknown(path string) error {
+	return trash.DeleteTrash(path)
+}
+
 type conflictAdapter struct{}
 
 func (conflictAdapter) HasConflict(destPath string) bool {
@@ -68,6 +75,12 @@ type errsinkAdapter struct{}
 
 func (errsinkAdapter) MoveToErrors(src, errorsDir string) error {
 	return errsink.MoveToErrors(src, errorsDir)
+}
+
+type dirCleanerAdapter struct{}
+
+func (dirCleanerAdapter) CleanEmptyDirs(rootDir string, ignoreDirs []string) error {
+	return cleanup.CleanEmptyDirs(rootDir, ignoreDirs)
 }
 
 // fakeEvents implements orchestrator.EventSource with a channel.
@@ -87,9 +100,11 @@ func newTestOrchestrator(mediaDir, watchDir, conflictDir, errorsDir string) *orc
 		Mover:            moverAdapter{},
 		Proxy:            proxyAdapter{},
 		Trash:            trashAdapter{},
+		UnknownDeleter:   unknownDeleterAdapter{},
 		Conflict:         conflictAdapter{},
 		ErrorSink:        errsinkAdapter{},
 		Watcher:          &fakeEvents{ch: make(chan string)},
+		DirCleaner:       dirCleanerAdapter{},
 		Logger:           logger,
 		MediaDir:         mediaDir,
 		WatchDir:         watchDir,
@@ -164,7 +179,7 @@ func TestProcessFile_THMDeletedAfterClassification(t *testing.T) {
 	assert.NoFileExists(t, srcFile)
 }
 
-func TestProcessFile_UnknownExtensionMovedToErrors(t *testing.T) {
+func TestProcessFile_UnknownExtensionDeleted(t *testing.T) {
 	tmpDir := t.TempDir()
 	watchDir := filepath.Join(tmpDir, "temp")
 	mediaDir := filepath.Join(tmpDir, "media")
@@ -180,6 +195,49 @@ func TestProcessFile_UnknownExtensionMovedToErrors(t *testing.T) {
 	err := orch.ProcessFile(srcFile)
 
 	require.NoError(t, err)
-	assert.FileExists(t, filepath.Join(errorsDir, "readme.xyz"))
+	assert.NoFileExists(t, srcFile)
+	// Unknown files are now deleted, not moved to errors
+	assert.NoFileExists(t, filepath.Join(errorsDir, "readme.xyz"))
+}
+
+func TestProcessFile_ZeroSizeStillMovedToErrors(t *testing.T) {
+	tmpDir := t.TempDir()
+	watchDir := filepath.Join(tmpDir, "temp")
+	mediaDir := filepath.Join(tmpDir, "media")
+	conflictDir := filepath.Join(tmpDir, "temp", "conflicts")
+	errorsDir := filepath.Join(tmpDir, "temp", "errors")
+	require.NoError(t, os.MkdirAll(watchDir, 0o755))
+	require.NoError(t, os.MkdirAll(mediaDir, 0o755))
+	require.NoError(t, os.MkdirAll(errorsDir, 0o755))
+
+	srcFile := filepath.Join(watchDir, "empty.mp4")
+	require.NoError(t, os.WriteFile(srcFile, []byte{}, 0o644))
+
+	orch := newTestOrchestrator(mediaDir, watchDir, conflictDir, errorsDir)
+	err := orch.ProcessFile(srcFile)
+
+	require.NoError(t, err)
+	assert.FileExists(t, filepath.Join(errorsDir, "empty.mp4"))
+	assert.NoFileExists(t, srcFile)
+}
+
+func TestProcessFile_NoExtensionStillMovedToErrors(t *testing.T) {
+	tmpDir := t.TempDir()
+	watchDir := filepath.Join(tmpDir, "temp")
+	mediaDir := filepath.Join(tmpDir, "media")
+	conflictDir := filepath.Join(tmpDir, "temp", "conflicts")
+	errorsDir := filepath.Join(tmpDir, "temp", "errors")
+	require.NoError(t, os.MkdirAll(watchDir, 0o755))
+	require.NoError(t, os.MkdirAll(mediaDir, 0o755))
+	require.NoError(t, os.MkdirAll(errorsDir, 0o755))
+
+	srcFile := filepath.Join(watchDir, "noext")
+	require.NoError(t, os.WriteFile(srcFile, []byte("content"), 0o644))
+
+	orch := newTestOrchestrator(mediaDir, watchDir, conflictDir, errorsDir)
+	err := orch.ProcessFile(srcFile)
+
+	require.NoError(t, err)
+	assert.FileExists(t, filepath.Join(errorsDir, "noext"))
 	assert.NoFileExists(t, srcFile)
 }
