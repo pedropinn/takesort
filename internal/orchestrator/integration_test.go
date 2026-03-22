@@ -40,9 +40,11 @@ func newIntegrationOrchestrator(watchDir, mediaDir, conflictDir, errorsDir strin
 		Mover:            moverAdapter{},
 		Proxy:            proxyAdapter{},
 		Trash:            trashAdapter{},
+		UnknownDeleter:   unknownDeleterAdapter{},
 		Conflict:         conflictAdapter{},
 		ErrorSink:        errsinkAdapter{},
 		Watcher:          fe,
+		DirCleaner:       dirCleanerAdapter{},
 		Logger:           logger,
 		MediaDir:         mediaDir,
 		WatchDir:         watchDir,
@@ -276,9 +278,11 @@ func TestIntegration_ErrorFlowMoveFailsGoesToErrors(t *testing.T) {
 		Mover:            failingMoverAdapter{},
 		Proxy:            proxyAdapter{},
 		Trash:            trashAdapter{},
+		UnknownDeleter:   unknownDeleterAdapter{},
 		Conflict:         conflictAdapter{},
 		ErrorSink:        errsinkAdapter{},
 		Watcher:          fe,
+		DirCleaner:       dirCleanerAdapter{},
 		Logger:           logger,
 		MediaDir:         mediaDir,
 		WatchDir:         watchDir,
@@ -344,4 +348,175 @@ func (failingMoverAdapter) MoveFile(_, _ string) error {
 
 func (failingMoverAdapter) BuildDestPath(mediaDir string, modTime time.Time, ft classifier.FileType) string {
 	return mover.BuildDestPath(mediaDir, modTime, ft)
+}
+
+// Recursive SD card ingestion integration tests
+
+func TestIntegration_RecursiveOrphansProcessedAndDirsCleanedOnStartup(t *testing.T) {
+	watchDir, mediaDir, conflictDir, errorsDir := setupDirs(t)
+
+	// Simulate an SD card structure already present at startup
+	dcimDir := filepath.Join(watchDir, "DCIM", "100MEDIA")
+	require.NoError(t, os.MkdirAll(dcimDir, 0o755))
+
+	orphanFile := filepath.Join(dcimDir, "DJI_0001.mp4")
+	require.NoError(t, os.WriteFile(orphanFile, []byte("drone video"), 0o644))
+
+	modTime := time.Date(2026, 5, 20, 14, 0, 0, 0, time.UTC)
+	require.NoError(t, os.Chtimes(orphanFile, modTime, modTime))
+
+	orch, _ := newIntegrationOrchestrator(watchDir, mediaDir, conflictDir, errorsDir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		cancel()
+	}()
+
+	err := orch.Run(ctx)
+	require.NoError(t, err)
+
+	// File should be moved to date-based destination
+	assert.FileExists(t, filepath.Join(mediaDir, "2026", "2026-05-20", "DJI_0001.mp4"))
+	assert.NoFileExists(t, orphanFile)
+
+	// Empty directory tree should be cleaned up
+	assert.NoDirExists(t, dcimDir)
+	assert.NoDirExists(t, filepath.Join(watchDir, "DCIM"))
+}
+
+func TestIntegration_SDCardStructureMixedTypesAndHiddenDirs(t *testing.T) {
+	watchDir, mediaDir, conflictDir, errorsDir := setupDirs(t)
+
+	modTime := time.Date(2026, 9, 1, 10, 0, 0, 0, time.UTC)
+
+	// Create a realistic SD card structure
+	dcimDir := filepath.Join(watchDir, "DCIM", "100MEDIA")
+	require.NoError(t, os.MkdirAll(dcimDir, 0o755))
+
+	// Hidden directories (macOS artifacts)
+	hiddenTrashDir := filepath.Join(watchDir, ".Trashes")
+	require.NoError(t, os.MkdirAll(hiddenTrashDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(hiddenTrashDir, "junk.dat"), []byte("junk"), 0o644))
+
+	hiddenSpotlight := filepath.Join(watchDir, ".Spotlight-V100")
+	require.NoError(t, os.MkdirAll(hiddenSpotlight, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(hiddenSpotlight, "index.db"), []byte("index"), 0o644))
+
+	// Media files at various locations
+	mp4File := filepath.Join(dcimDir, "DJI_0042.mp4")
+	require.NoError(t, os.WriteFile(mp4File, []byte("video"), 0o644))
+	require.NoError(t, os.Chtimes(mp4File, modTime, modTime))
+
+	jpgFile := filepath.Join(dcimDir, "DJI_0042.jpg")
+	require.NoError(t, os.WriteFile(jpgFile, []byte("photo"), 0o644))
+	require.NoError(t, os.Chtimes(jpgFile, modTime, modTime))
+
+	// Trash file
+	thmFile := filepath.Join(dcimDir, "DJI_0042.thm")
+	require.NoError(t, os.WriteFile(thmFile, []byte("thumbnail"), 0o644))
+
+	// Unknown file (SD card junk)
+	logFile := filepath.Join(dcimDir, "MISC.log")
+	require.NoError(t, os.WriteFile(logFile, []byte("log data"), 0o644))
+
+	orch, _ := newIntegrationOrchestrator(watchDir, mediaDir, conflictDir, errorsDir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(400 * time.Millisecond)
+		cancel()
+	}()
+
+	err := orch.Run(ctx)
+	require.NoError(t, err)
+
+	// Media files sorted to correct destinations
+	assert.FileExists(t, filepath.Join(mediaDir, "2026", "2026-09-01", "DJI_0042.mp4"))
+	assert.FileExists(t, filepath.Join(mediaDir, "2026", "2026-09-01", "photos", "jpeg", "DJI_0042.jpg"))
+
+	// Trash file deleted
+	assert.NoFileExists(t, thmFile)
+
+	// Unknown file deleted (not moved to errors)
+	assert.NoFileExists(t, logFile)
+	assert.NoFileExists(t, filepath.Join(errorsDir, "MISC.log"))
+
+	// Hidden directories deleted
+	assert.NoDirExists(t, hiddenTrashDir)
+	assert.NoDirExists(t, hiddenSpotlight)
+
+	// Empty directory tree cleaned up
+	assert.NoDirExists(t, dcimDir)
+	assert.NoDirExists(t, filepath.Join(watchDir, "DCIM"))
+}
+
+func TestIntegration_HiddenDirInsideSubdirectoryDeletedDuringScan(t *testing.T) {
+	watchDir, mediaDir, conflictDir, errorsDir := setupDirs(t)
+
+	// Create a hidden directory nested inside a subdirectory
+	dcimDir := filepath.Join(watchDir, "DCIM")
+	hiddenInDCIM := filepath.Join(dcimDir, ".fseventsd")
+	require.NoError(t, os.MkdirAll(hiddenInDCIM, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(hiddenInDCIM, "fseventsd-uuid"), []byte("uuid"), 0o644))
+
+	// Also add a media file so we exercise the full pipeline
+	mediaSubdir := filepath.Join(dcimDir, "100MEDIA")
+	require.NoError(t, os.MkdirAll(mediaSubdir, 0o755))
+	mp4File := filepath.Join(mediaSubdir, "GH010042.mp4")
+	require.NoError(t, os.WriteFile(mp4File, []byte("gopro video"), 0o644))
+	modTime := time.Date(2026, 11, 15, 8, 0, 0, 0, time.UTC)
+	require.NoError(t, os.Chtimes(mp4File, modTime, modTime))
+
+	orch, _ := newIntegrationOrchestrator(watchDir, mediaDir, conflictDir, errorsDir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		cancel()
+	}()
+
+	err := orch.Run(ctx)
+	require.NoError(t, err)
+
+	// Hidden directory inside DCIM should be deleted
+	assert.NoDirExists(t, hiddenInDCIM)
+
+	// Media file processed
+	assert.FileExists(t, filepath.Join(mediaDir, "2026", "2026-11-15", "GH010042.mp4"))
+
+	// Empty tree cleaned up
+	assert.NoDirExists(t, dcimDir)
+}
+
+func TestIntegration_DeepDirectoryTreeCleanedAfterProcessing(t *testing.T) {
+	watchDir, mediaDir, conflictDir, errorsDir := setupDirs(t)
+
+	// Create a deep nested structure: DCIM/100MEDIA/sub1/sub2/
+	deepDir := filepath.Join(watchDir, "DCIM", "100MEDIA", "sub1", "sub2")
+	require.NoError(t, os.MkdirAll(deepDir, 0o755))
+
+	// Put a single file at the deepest level
+	wavFile := filepath.Join(deepDir, "recording.wav")
+	require.NoError(t, os.WriteFile(wavFile, []byte("audio data"), 0o644))
+	modTime := time.Date(2026, 7, 4, 16, 0, 0, 0, time.UTC)
+	require.NoError(t, os.Chtimes(wavFile, modTime, modTime))
+
+	orch, _ := newIntegrationOrchestrator(watchDir, mediaDir, conflictDir, errorsDir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		cancel()
+	}()
+
+	err := orch.Run(ctx)
+	require.NoError(t, err)
+
+	// File processed
+	assert.FileExists(t, filepath.Join(mediaDir, "2026", "2026-07-04", "audio", "recording.wav"))
+
+	// Entire deep directory tree cleaned up
+	assert.NoDirExists(t, deepDir)
+	assert.NoDirExists(t, filepath.Join(watchDir, "DCIM"))
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/pinn/takesort/internal/classifier"
+	"github.com/pinn/takesort/internal/cleanup"
 	"github.com/pinn/takesort/internal/config"
 	"github.com/pinn/takesort/internal/conflict"
 	"github.com/pinn/takesort/internal/errsink"
@@ -59,6 +60,12 @@ func (trashAdapter) DeleteTrash(path string) error {
 	return trash.DeleteTrash(path)
 }
 
+type unknownDeleterAdapter struct{}
+
+func (unknownDeleterAdapter) DeleteUnknown(path string) error {
+	return trash.DeleteTrash(path)
+}
+
 type conflictAdapter struct{}
 
 func (conflictAdapter) HasConflict(destPath string) bool {
@@ -73,6 +80,12 @@ type errsinkAdapter struct{}
 
 func (errsinkAdapter) MoveToErrors(src, errorsDir string) error {
 	return errsink.MoveToErrors(src, errorsDir)
+}
+
+type dirCleanerAdapter struct{}
+
+func (dirCleanerAdapter) CleanEmptyDirs(rootDir string, ignoreDirs []string) error {
+	return cleanup.CleanEmptyDirs(rootDir, ignoreDirs)
 }
 
 func main() {
@@ -108,9 +121,11 @@ func main() {
 		Mover:            moverAdapter{},
 		Proxy:            proxyAdapter{},
 		Trash:            trashAdapter{},
+		UnknownDeleter:   unknownDeleterAdapter{},
 		Conflict:         conflictAdapter{},
 		ErrorSink:        errsinkAdapter{},
 		Watcher:          w,
+		DirCleaner:       dirCleanerAdapter{},
 		Logger:           log,
 		MediaDir:         cfg.MediaDir,
 		WatchDir:         cfg.WatchDir,
