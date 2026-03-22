@@ -13,7 +13,7 @@ func isFileLocked(path string) bool {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	lock := syscall.Flock_t{
 		Type:   syscall.F_WRLCK,
