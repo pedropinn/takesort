@@ -26,7 +26,7 @@ func TestHelperProcess(t *testing.T) {
 		fmt.Fprintf(os.Stderr, "open: %v\n", err)
 		os.Exit(1)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	lock := syscall.Flock_t{
 		Type:   syscall.F_WRLCK,
