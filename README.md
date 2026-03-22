@@ -20,7 +20,7 @@ services:
   takesort:
     image: pedropinn/takesort:latest
     user: "3000:3000"
-    voluMM:
+    volumes:
       - /mnt/hdd/media/videos:/media
     environment:
       - TAKESORT_DEBOUNCE_INTERVAL=2s
