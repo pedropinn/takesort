@@ -10,9 +10,15 @@ import (
 // ErrFileDisappeared is returned when a file is removed during stability checks.
 var ErrFileDisappeared = errors.New("file disappeared during stability check")
 
-// WaitForStability polls the file size at the given interval and returns nil
-// once the size remains unchanged for the specified number of consecutive checks.
-// The first read establishes a baseline and does not count as a stable check.
+// WaitForStability polls file size and checks for POSIX locks at the given
+// interval and returns nil once the size remains unchanged AND the file is not
+// locked for the specified number of consecutive checks. The first read
+// establishes a baseline and does not count as a stable check.
+//
+// The lock check detects files still being written via SMB/NFS: when a client
+// copies a file over SMB, the Samba server holds a POSIX (fcntl) lock on the
+// file. Even if the filesystem pre-allocates the file at full size, the lock
+// check will catch that the copy is still in progress.
 func WaitForStability(ctx context.Context, path string, interval time.Duration, checks int) error {
 	prevSize := int64(-1)
 	stable := 0
@@ -27,7 +33,7 @@ func WaitForStability(ctx context.Context, path string, interval time.Duration, 
 		}
 
 		size := info.Size()
-		if size == prevSize {
+		if size == prevSize && !isFileLocked(path) {
 			stable++
 		} else {
 			stable = 0

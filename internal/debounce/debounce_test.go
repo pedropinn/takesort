@@ -1,8 +1,10 @@
 package debounce_test
 
 import (
+	"bufio"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -69,6 +71,36 @@ func TestWaitForStability_ConfigurableInterval(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, elapsed.Milliseconds(), int64(110))
+}
+
+func TestWaitForStability_LockedFileResetsCounter(t *testing.T) {
+	tmpDir := t.TempDir()
+	f := filepath.Join(tmpDir, "locked.mp4")
+	require.NoError(t, os.WriteFile(f, []byte("video data"), 0o644))
+
+	// Spawn subprocess to hold a POSIX write lock (fcntl locks are per-process)
+	cmd := exec.Command(os.Args[0], "-test.run=^TestHelperProcess$")
+	cmd.Env = append(os.Environ(), "GO_HELPER_LOCK_FILE="+f)
+	stdout, err := cmd.StdoutPipe()
+	require.NoError(t, err)
+	require.NoError(t, cmd.Start())
+
+	// Wait for subprocess to acquire lock
+	scanner := bufio.NewScanner(stdout)
+	require.True(t, scanner.Scan(), "subprocess did not emit 'locked' signal")
+
+	done := make(chan error, 1)
+	go func() {
+		done <- debounce.WaitForStability(context.Background(), f, 50*time.Millisecond, 3)
+	}()
+
+	// Release lock after 200ms by killing subprocess
+	time.Sleep(200 * time.Millisecond)
+	require.NoError(t, cmd.Process.Kill())
+	_ = cmd.Wait()
+
+	err = <-done
+	assert.NoError(t, err)
 }
 
 func TestWaitForStability_ContextCancellation(t *testing.T) {
