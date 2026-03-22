@@ -45,6 +45,7 @@ func newIntegrationOrchestrator(watchDir, mediaDir, conflictDir, errorsDir strin
 		ErrorSink:        errsinkAdapter{},
 		Watcher:          fe,
 		DirCleaner:       dirCleanerAdapter{},
+		DateExtractor:    dateExtractAdapter{},
 		Logger:           logger,
 		MediaDir:         mediaDir,
 		WatchDir:         watchDir,
@@ -283,6 +284,7 @@ func TestIntegration_ErrorFlowMoveFailsGoesToErrors(t *testing.T) {
 		ErrorSink:        errsinkAdapter{},
 		Watcher:          fe,
 		DirCleaner:       dirCleanerAdapter{},
+		DateExtractor:    dateExtractAdapter{},
 		Logger:           logger,
 		MediaDir:         mediaDir,
 		WatchDir:         watchDir,
@@ -519,4 +521,115 @@ func TestIntegration_DeepDirectoryTreeCleanedAfterProcessing(t *testing.T) {
 	// Entire deep directory tree cleaned up
 	assert.NoDirExists(t, deepDir)
 	assert.NoDirExists(t, filepath.Join(watchDir, "DCIM"))
+}
+
+// DJI filename date extraction integration tests
+
+func TestIntegration_DJIFilenameDateRoutedViaWatcherEvent(t *testing.T) {
+	watchDir, mediaDir, conflictDir, errorsDir := setupDirs(t)
+	orch, fe := newIntegrationOrchestrator(watchDir, mediaDir, conflictDir, errorsDir)
+
+	srcFile := filepath.Join(watchDir, "DJI_20260218094732_0004_D.MP4")
+	require.NoError(t, os.WriteFile(srcFile, []byte("drone video"), 0o644))
+
+	// Set ModTime to a different date to verify filename date wins
+	modTime := time.Date(2026, 3, 22, 10, 0, 0, 0, time.UTC)
+	require.NoError(t, os.Chtimes(srcFile, modTime, modTime))
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		fe.ch <- srcFile
+		time.Sleep(200 * time.Millisecond)
+		cancel()
+	}()
+
+	err := orch.Run(ctx)
+	require.NoError(t, err)
+
+	// File should be routed by filename date (2026-02-18), not ModTime (2026-03-22)
+	assert.FileExists(t, filepath.Join(mediaDir, "2026", "2026-02-18", "DJI_20260218094732_0004_D.MP4"))
+	assert.NoFileExists(t, srcFile)
+	assert.NoFileExists(t, filepath.Join(mediaDir, "2026", "2026-03-22", "DJI_20260218094732_0004_D.MP4"))
+}
+
+func TestIntegration_NonDJIFileFallbackToModTimeViaWatcherEvent(t *testing.T) {
+	watchDir, mediaDir, conflictDir, errorsDir := setupDirs(t)
+	orch, fe := newIntegrationOrchestrator(watchDir, mediaDir, conflictDir, errorsDir)
+
+	srcFile := filepath.Join(watchDir, "GoPro_0042.mp4")
+	require.NoError(t, os.WriteFile(srcFile, []byte("gopro video"), 0o644))
+
+	modTime := time.Date(2026, 5, 10, 14, 0, 0, 0, time.UTC)
+	require.NoError(t, os.Chtimes(srcFile, modTime, modTime))
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		fe.ch <- srcFile
+		time.Sleep(200 * time.Millisecond)
+		cancel()
+	}()
+
+	err := orch.Run(ctx)
+	require.NoError(t, err)
+
+	// Non-DJI file should fall back to ModTime routing
+	assert.FileExists(t, filepath.Join(mediaDir, "2026", "2026-05-10", "GoPro_0042.mp4"))
+	assert.NoFileExists(t, srcFile)
+}
+
+func TestIntegration_DJINamedJPGRoutedByFilenameDateViaWatcherEvent(t *testing.T) {
+	watchDir, mediaDir, conflictDir, errorsDir := setupDirs(t)
+	orch, fe := newIntegrationOrchestrator(watchDir, mediaDir, conflictDir, errorsDir)
+
+	srcFile := filepath.Join(watchDir, "DJI_20260218094732_0004_D.JPG")
+	require.NoError(t, os.WriteFile(srcFile, []byte("drone photo"), 0o644))
+
+	// Set ModTime to a different date to verify filename date wins
+	modTime := time.Date(2026, 3, 22, 10, 0, 0, 0, time.UTC)
+	require.NoError(t, os.Chtimes(srcFile, modTime, modTime))
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		fe.ch <- srcFile
+		time.Sleep(200 * time.Millisecond)
+		cancel()
+	}()
+
+	err := orch.Run(ctx)
+	require.NoError(t, err)
+
+	// JPG should be routed to photos/jpeg using filename date
+	assert.FileExists(t, filepath.Join(mediaDir, "2026", "2026-02-18", "photos", "jpeg", "DJI_20260218094732_0004_D.JPG"))
+	assert.NoFileExists(t, srcFile)
+}
+
+func TestIntegration_DJINamedOrphanRoutedByFilenameDateOnStartup(t *testing.T) {
+	watchDir, mediaDir, conflictDir, errorsDir := setupDirs(t)
+
+	// Pre-populate watch dir with a DJI-named orphan file
+	orphanFile := filepath.Join(watchDir, "DJI_20260218094732_0004_D.MP4")
+	require.NoError(t, os.WriteFile(orphanFile, []byte("drone video"), 0o644))
+
+	// Set ModTime to a different date to verify filename date wins
+	modTime := time.Date(2026, 3, 22, 10, 0, 0, 0, time.UTC)
+	require.NoError(t, os.Chtimes(orphanFile, modTime, modTime))
+
+	orch, _ := newIntegrationOrchestrator(watchDir, mediaDir, conflictDir, errorsDir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		cancel()
+	}()
+
+	err := orch.Run(ctx)
+	require.NoError(t, err)
+
+	// Orphan file should be routed by filename date (2026-02-18), not ModTime (2026-03-22)
+	assert.FileExists(t, filepath.Join(mediaDir, "2026", "2026-02-18", "DJI_20260218094732_0004_D.MP4"))
+	assert.NoFileExists(t, orphanFile)
 }

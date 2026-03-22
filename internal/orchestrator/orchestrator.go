@@ -65,6 +65,11 @@ type DirCleaner interface {
 	CleanEmptyDirs(rootDir string, ignoreDirs []string) error
 }
 
+// DateExtractor extracts a date from a filename.
+type DateExtractor interface {
+	ExtractDate(filename string) (time.Time, bool)
+}
+
 // Deps holds all injected dependencies for the Orchestrator.
 type Deps struct {
 	Classifier       FileClassifier
@@ -77,6 +82,7 @@ type Deps struct {
 	ErrorSink        ErrorSink
 	Watcher          EventSource
 	DirCleaner       DirCleaner
+	DateExtractor    DateExtractor
 	Logger           *slog.Logger
 	MediaDir         string
 	WatchDir         string
@@ -132,16 +138,25 @@ func (o *Orchestrator) ProcessFile(path string) error {
 		return o.deps.Trash.DeleteTrash(path)
 	}
 
-	// 5. Get ModTime (Lstat to avoid following symlinks)
-	info, err := os.Lstat(path)
-	if err != nil {
-		logger.Error("stat failed", "error", err)
-		return o.deps.ErrorSink.MoveToErrors(path, o.deps.ErrorsDir)
+	// 5. Resolve date: try filename extraction first, fall back to ModTime
+	var fileDate time.Time
+	if o.deps.DateExtractor != nil {
+		if extracted, ok := o.deps.DateExtractor.ExtractDate(filepath.Base(path)); ok {
+			fileDate = extracted
+			logger.Debug("date extracted from filename", "date", fileDate.Format("2006-01-02"))
+		}
 	}
-	modTime := info.ModTime()
+	if fileDate.IsZero() {
+		info, err := os.Lstat(path)
+		if err != nil {
+			logger.Error("stat failed", "error", err)
+			return o.deps.ErrorSink.MoveToErrors(path, o.deps.ErrorsDir)
+		}
+		fileDate = info.ModTime()
+	}
 
 	// 6. Build dest path
-	destDir := o.deps.Mover.BuildDestPath(o.deps.MediaDir, modTime, ft)
+	destDir := o.deps.Mover.BuildDestPath(o.deps.MediaDir, fileDate, ft)
 
 	// 7. Check conflict
 	destFile := filepath.Join(destDir, filepath.Base(path))
