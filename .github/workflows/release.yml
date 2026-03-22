@@ -153,7 +153,7 @@ jobs:
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
             # Keep max 4 semver tags vX.Y.Z (exclude latest and vX.Y aliases)
             KEEP=4
-            SEMVER_TAGS=$(echo "$TAGS_JSON" | jq -r '.results[].name' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$')
+            SEMVER_TAGS=$(echo "$TAGS_JSON" | jq -r '.results[].name' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -rV)
             COUNT=0
             for tag in $SEMVER_TAGS; do
               COUNT=$((COUNT + 1))
