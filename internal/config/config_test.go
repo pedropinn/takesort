@@ -12,12 +12,31 @@ import (
 func TestLoad_DefaultValues(t *testing.T) {
 	t.Setenv("TAKESORT_DEBOUNCE_INTERVAL", "")
 	t.Setenv("TAKESORT_LOG_LEVEL", "")
+	t.Setenv("TAKESORT_WATCH_DIR", "")
+	t.Setenv("TAKESORT_MEDIA_DIR", "")
 
 	cfg, err := config.Load()
 
 	require.NoError(t, err)
+	assert.Equal(t, "/media/temp", cfg.WatchDir)
+	assert.Equal(t, "/media", cfg.MediaDir)
+	assert.Equal(t, "/media/temp/conflicts", cfg.ConflictsDir)
+	assert.Equal(t, "/media/temp/errors", cfg.ErrorsDir)
 	assert.Equal(t, 2*time.Second, cfg.DebounceInterval)
 	assert.Equal(t, "info", cfg.LogLevel)
+}
+
+func TestLoad_CustomPaths(t *testing.T) {
+	t.Setenv("TAKESORT_WATCH_DIR", "/media/temp")
+	t.Setenv("TAKESORT_MEDIA_DIR", "/media")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, "/media/temp", cfg.WatchDir)
+	assert.Equal(t, "/media", cfg.MediaDir)
+	assert.Equal(t, "/media/temp/conflicts", cfg.ConflictsDir)
+	assert.Equal(t, "/media/temp/errors", cfg.ErrorsDir)
 }
 
 func TestLoad_CustomEnvValues(t *testing.T) {
