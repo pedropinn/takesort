@@ -88,16 +88,16 @@ func main() {
 		"version", version,
 		"debounce_interval", cfg.DebounceInterval,
 		"log_level", cfg.LogLevel,
-		"watch_dir", config.WatchDir,
-		"media_dir", config.MediaDir,
+		"watch_dir", cfg.WatchDir,
+		"media_dir", cfg.MediaDir,
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	w := watcher.New(
-		config.WatchDir,
-		[]string{config.ConflictsDir, config.ErrorsDir},
+		cfg.WatchDir,
+		[]string{cfg.ConflictsDir, cfg.ErrorsDir},
 		log,
 	)
 
@@ -111,10 +111,10 @@ func main() {
 		ErrorSink:        errsinkAdapter{},
 		Watcher:          w,
 		Logger:           log,
-		MediaDir:         config.MediaDir,
-		WatchDir:         config.WatchDir,
-		ConflictDir:      config.ConflictsDir,
-		ErrorsDir:        config.ErrorsDir,
+		MediaDir:         cfg.MediaDir,
+		WatchDir:         cfg.WatchDir,
+		ConflictDir:      cfg.ConflictsDir,
+		ErrorsDir:        cfg.ErrorsDir,
 		DebounceInterval: cfg.DebounceInterval,
 		DebounceChecks:   4,
 	})

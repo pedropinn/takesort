@@ -3,14 +3,13 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 )
 
 const (
-	WatchDir     = "/temp"
-	MediaDir     = "/media"
-	ConflictsDir = "/temp/conflicts"
-	ErrorsDir    = "/temp/errors"
+	defaultWatchDir = "/media/temp"
+	defaultMediaDir = "/media"
 
 	defaultDebounceInterval = 2 * time.Second
 	defaultLogLevel         = "info"
@@ -25,6 +24,11 @@ var validLogLevels = map[string]bool{
 
 // Config holds application settings loaded from environment variables.
 type Config struct {
+	WatchDir     string
+	MediaDir     string
+	ConflictsDir string
+	ErrorsDir    string
+
 	DebounceInterval time.Duration
 	LogLevel         string
 }
@@ -32,9 +36,22 @@ type Config struct {
 // Load reads configuration from environment variables and applies defaults.
 func Load() (*Config, error) {
 	cfg := &Config{
+		WatchDir:         defaultWatchDir,
+		MediaDir:         defaultMediaDir,
 		DebounceInterval: defaultDebounceInterval,
 		LogLevel:         defaultLogLevel,
 	}
+
+	if v := os.Getenv("TAKESORT_WATCH_DIR"); v != "" {
+		cfg.WatchDir = v
+	}
+
+	if v := os.Getenv("TAKESORT_MEDIA_DIR"); v != "" {
+		cfg.MediaDir = v
+	}
+
+	cfg.ConflictsDir = filepath.Join(cfg.WatchDir, "conflicts")
+	cfg.ErrorsDir = filepath.Join(cfg.WatchDir, "errors")
 
 	if v := os.Getenv("TAKESORT_DEBOUNCE_INTERVAL"); v != "" {
 		d, err := time.ParseDuration(v)
