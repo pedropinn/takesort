@@ -16,6 +16,7 @@ import (
 	"github.com/pinn/takesort/internal/dateextract"
 	"github.com/pinn/takesort/internal/errsink"
 	"github.com/pinn/takesort/internal/logger"
+	"github.com/pinn/takesort/internal/logmsg"
 	"github.com/pinn/takesort/internal/mover"
 	"github.com/pinn/takesort/internal/orchestrator"
 	"github.com/pinn/takesort/internal/proxy"
@@ -98,13 +99,13 @@ func (dateExtractAdapter) ExtractDate(filename string) (time.Time, bool) {
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
-		slog.Error("failed to load config", "error", err)
+		slog.Error(logmsg.StartupConfigFailed, "error", err)
 		os.Exit(1)
 	}
 
 	log := logger.Setup(cfg.LogLevel)
 
-	log.Info("takesort starting",
+	log.Info(logmsg.StartupBegin,
 		"version", version,
 		"debounce_interval", cfg.DebounceInterval,
 		"debounce_checks", cfg.DebounceChecks,
@@ -118,7 +119,7 @@ func main() {
 
 	w := watcher.New(
 		cfg.WatchDir,
-		[]string{cfg.ConflictsDir, cfg.ErrorsDir},
+		[]string{cfg.ConflictsDir},
 		log,
 	)
 
@@ -149,15 +150,15 @@ func main() {
 	go func() {
 		defer wg.Done()
 		if err := w.Start(ctx); err != nil {
-			log.Error("watcher error", "error", err)
+			log.Error(logmsg.WatcherError, "error", err)
 		}
 	}()
 
 	if err := orch.Run(ctx); err != nil {
-		log.Error("orchestrator error", "error", err)
+		log.Error(logmsg.OrchestratorFailed, "error", err)
 		os.Exit(1)
 	}
 
 	wg.Wait()
-	log.Info("takesort shutdown complete")
+	log.Info(logmsg.ShutdownComplete)
 }

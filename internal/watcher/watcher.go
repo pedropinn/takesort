@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/pinn/takesort/internal/logmsg"
 	"github.com/pinn/takesort/internal/safepath"
 )
 
@@ -50,9 +51,9 @@ func (w *Watcher) Start(ctx context.Context) error {
 			return nil
 		}
 		if isHidden(d.Name()) {
-			w.logger.Info("deleting hidden directory", "path", path)
+			w.logger.Info(logmsg.DirHiddenDeleting, "path", path)
 			if removeErr := os.RemoveAll(path); removeErr != nil {
-				w.logger.Error("failed to delete hidden directory", "path", path, "error", removeErr)
+				w.logger.Error(logmsg.DirHiddenDeleteFailed, "path", path, "error", removeErr)
 			}
 			return filepath.SkipDir
 		}
@@ -60,17 +61,17 @@ func (w *Watcher) Start(ctx context.Context) error {
 			return filepath.SkipDir
 		}
 		if addErr := fsw.Add(path); addErr != nil {
-			w.logger.Error("failed to watch subdirectory", "path", path, "error", addErr)
+			w.logger.Error(logmsg.DirWatchFailed, "path", path, "error", addErr)
 		}
 		return nil
 	})
 
-	w.logger.Info("watcher started", "dir", w.watchDir)
+	w.logger.Info(logmsg.WatcherStarted, "dir", w.watchDir)
 
 	for {
 		select {
 		case <-ctx.Done():
-			w.logger.Info("watcher stopping")
+			w.logger.Info(logmsg.WatcherStopping)
 			return nil
 		case event, ok := <-fsw.Events:
 			if !ok {
@@ -80,14 +81,14 @@ func (w *Watcher) Start(ctx context.Context) error {
 				continue
 			}
 			if w.isIgnored(event.Name) {
-				w.logger.Debug("ignoring event in excluded dir", "path", event.Name)
+				w.logger.Debug(logmsg.WatcherEventIgnored, "path", event.Name)
 				continue
 			}
 
 			// Check if the created path is a directory or file
 			info, lstatErr := os.Lstat(event.Name)
 			if lstatErr != nil {
-				w.logger.Debug("lstat failed for event path", "path", event.Name, "error", lstatErr)
+				w.logger.Debug(logmsg.WatcherLstatFailed, "path", event.Name, "error", lstatErr)
 				continue
 			}
 
@@ -98,18 +99,18 @@ func (w *Watcher) Start(ctx context.Context) error {
 
 			// Skip symlinks
 			if info.Mode()&os.ModeSymlink != 0 {
-				w.logger.Warn("ignoring symlink", "path", event.Name)
+				w.logger.Warn(logmsg.WatcherSymlinkIgnored, "path", event.Name)
 				continue
 			}
 
-			w.logger.Info("file detected", "path", event.Name)
+			w.logger.Info(logmsg.WatcherFileDetected, "path", event.Name)
 			w.events <- event.Name
 
 		case err, ok := <-fsw.Errors:
 			if !ok {
 				return nil
 			}
-			w.logger.Error("watcher error", "error", err)
+			w.logger.Error(logmsg.WatcherError, "error", err)
 		}
 	}
 }
@@ -120,9 +121,9 @@ func (w *Watcher) handleNewDirectory(fsw *fsnotify.Watcher, dirPath string) {
 	name := filepath.Base(dirPath)
 
 	if isHidden(name) {
-		w.logger.Info("deleting hidden directory", "path", dirPath)
+		w.logger.Info(logmsg.DirHiddenDeleting, "path", dirPath)
 		if err := os.RemoveAll(dirPath); err != nil {
-			w.logger.Error("failed to delete hidden directory", "path", dirPath, "error", err)
+			w.logger.Error(logmsg.DirHiddenDeleteFailed, "path", dirPath, "error", err)
 		}
 		return
 	}
@@ -135,9 +136,9 @@ func (w *Watcher) handleNewDirectory(fsw *fsnotify.Watcher, dirPath string) {
 
 		if d.IsDir() {
 			if isHidden(d.Name()) {
-				w.logger.Info("deleting hidden directory", "path", path)
+				w.logger.Info(logmsg.DirHiddenDeleting, "path", path)
 				if removeErr := os.RemoveAll(path); removeErr != nil {
-					w.logger.Error("failed to delete hidden directory", "path", path, "error", removeErr)
+					w.logger.Error(logmsg.DirHiddenDeleteFailed, "path", path, "error", removeErr)
 				}
 				return filepath.SkipDir
 			}
@@ -145,7 +146,7 @@ func (w *Watcher) handleNewDirectory(fsw *fsnotify.Watcher, dirPath string) {
 				return filepath.SkipDir
 			}
 			if addErr := fsw.Add(path); addErr != nil {
-				w.logger.Error("failed to watch subdirectory", "path", path, "error", addErr)
+				w.logger.Error(logmsg.DirWatchFailed, "path", path, "error", addErr)
 			}
 			return nil
 		}
@@ -156,11 +157,11 @@ func (w *Watcher) handleNewDirectory(fsw *fsnotify.Watcher, dirPath string) {
 		}
 
 		if safepath.IsSymlink(path) {
-			w.logger.Warn("ignoring symlink", "path", path)
+			w.logger.Warn(logmsg.WatcherSymlinkIgnored, "path", path)
 			return nil
 		}
 
-		w.logger.Info("file detected", "path", path)
+		w.logger.Info(logmsg.WatcherFileDetected, "path", path)
 		w.events <- path
 		return nil
 	})
