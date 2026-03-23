@@ -14,6 +14,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w -X main.version=${VERSION}
 # Stage 2: Minimal runtime image
 FROM alpine:3.21
 
+RUN apk add --no-cache tzdata
+
 COPY --from=builder /bin/takesort /usr/local/bin/takesort
 
 ENTRYPOINT ["/usr/local/bin/takesort"]
