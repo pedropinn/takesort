@@ -55,7 +55,7 @@ func Load() (*Config, error) {
 	}
 
 	cfg.ConflictsDir = filepath.Join(cfg.WatchDir, "conflicts")
-	cfg.ErrorsDir = filepath.Join(cfg.WatchDir, "errors")
+	cfg.ErrorsDir = filepath.Join(cfg.WatchDir, "conflicts", "errors")
 
 	if v := os.Getenv("TAKESORT_DEBOUNCE_INTERVAL"); v != "" {
 		d, err := time.ParseDuration(v)

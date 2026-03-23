@@ -22,7 +22,7 @@ func TestLoad_DefaultValues(t *testing.T) {
 	assert.Equal(t, "/media/temp", cfg.WatchDir)
 	assert.Equal(t, "/media", cfg.MediaDir)
 	assert.Equal(t, "/media/temp/conflicts", cfg.ConflictsDir)
-	assert.Equal(t, "/media/temp/errors", cfg.ErrorsDir)
+	assert.Equal(t, "/media/temp/conflicts/errors", cfg.ErrorsDir)
 	assert.Equal(t, 2*time.Second, cfg.DebounceInterval)
 	assert.Equal(t, 5, cfg.DebounceChecks)
 	assert.Equal(t, "info", cfg.LogLevel)
@@ -38,7 +38,7 @@ func TestLoad_CustomPaths(t *testing.T) {
 	assert.Equal(t, "/media/temp", cfg.WatchDir)
 	assert.Equal(t, "/media", cfg.MediaDir)
 	assert.Equal(t, "/media/temp/conflicts", cfg.ConflictsDir)
-	assert.Equal(t, "/media/temp/errors", cfg.ErrorsDir)
+	assert.Equal(t, "/media/temp/conflicts/errors", cfg.ErrorsDir)
 }
 
 func TestLoad_CustomEnvValues(t *testing.T) {
