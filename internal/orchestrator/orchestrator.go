@@ -10,6 +10,7 @@ import (
 
 	"github.com/pinn/takesort/internal/classifier"
 	"github.com/pinn/takesort/internal/debounce"
+	"github.com/pinn/takesort/internal/logmsg"
 	"github.com/pinn/takesort/internal/safepath"
 )
 
@@ -111,49 +112,52 @@ func (o *Orchestrator) ProcessFile(path string) error {
 
 	// 0. Reject symlinks
 	if safepath.IsSymlink(path) {
-		logger.Warn("symlink rejected")
+		logger.Warn(logmsg.FileSymlinkRejected)
 		return o.deps.ErrorSink.MoveToErrors(path, o.deps.ErrorsDir)
 	}
 
 	// 1. Validate
 	if reject, reason := o.deps.Validator.ShouldReject(path); reject {
-		logger.Warn("file rejected", "reason", reason)
+		logger.Warn(logmsg.FileValidationFailed, "reason", reason)
 		return o.deps.ErrorSink.MoveToErrors(path, o.deps.ErrorsDir)
 	}
 
 	// 2. Classify
 	ft := o.deps.Classifier.Classify(path)
 	logger = logger.With("type", ft)
-	logger.Info("file classified")
+	logger.Info(logmsg.FileClassified)
 
 	// 3. Unknown -> delete
 	if ft == classifier.Unknown {
-		logger.Warn("unknown file type, deleting")
+		logger.Warn(logmsg.FileUnknownDeleting)
 		return o.deps.UnknownDeleter.DeleteUnknown(path)
 	}
 
 	// 4. Trash -> delete
 	if ft == classifier.Trash {
-		logger.Info("deleting trash file")
+		logger.Info(logmsg.FileTrashDeleting)
 		return o.deps.Trash.DeleteTrash(path)
 	}
 
 	// 5. Resolve date: try filename extraction first, fall back to ModTime
 	var fileDate time.Time
+	var dateSource string
 	if o.deps.DateExtractor != nil {
 		if extracted, ok := o.deps.DateExtractor.ExtractDate(filepath.Base(path)); ok {
 			fileDate = extracted
-			logger.Debug("date extracted from filename", "date", fileDate.Format("2006-01-02"))
+			dateSource = "filename"
 		}
 	}
 	if fileDate.IsZero() {
 		info, err := os.Lstat(path)
 		if err != nil {
-			logger.Error("stat failed", "error", err)
+			logger.Error(logmsg.FileStatFailed, "error", err)
 			return o.deps.ErrorSink.MoveToErrors(path, o.deps.ErrorsDir)
 		}
 		fileDate = info.ModTime()
+		dateSource = "modtime"
 	}
+	logger.Info(logmsg.FileDateResolved, "date", fileDate.Format("2006-01-02"), "source", dateSource)
 
 	// 6. Build dest path
 	destDir := o.deps.Mover.BuildDestPath(o.deps.MediaDir, fileDate, ft)
@@ -168,24 +172,24 @@ func (o *Orchestrator) ProcessFile(path string) error {
 	}
 
 	if o.deps.Conflict.HasConflict(destFile) {
-		logger.Warn("conflict detected, moving to conflicts", "dest", destFile)
+		logger.Warn(logmsg.FileConflictDetected, "dest", destFile)
 		return o.deps.Conflict.MoveToConflicts(path, o.deps.ConflictDir)
 	}
 
 	// 8-9. Move proxy
 	if ft == classifier.Proxy {
-		logger.Info("processing proxy", "dest", destDir)
+		logger.Info(logmsg.FileProxyProcessing, "dest", destDir, "date", fileDate.Format("2006-01-02"), "source", dateSource)
 		if err := o.deps.Proxy.ProcessProxy(path, destDir); err != nil {
-			logger.Error("proxy processing failed", "error", err)
+			logger.Error(logmsg.FileProxyFailed, "error", err)
 			return o.deps.ErrorSink.MoveToErrors(path, o.deps.ErrorsDir)
 		}
 		return nil
 	}
 
 	// 10. Regular move
-	logger.Info("moving file", "dest", destDir)
+	logger.Info(logmsg.FileMoving, "dest", destDir, "date", fileDate.Format("2006-01-02"), "source", dateSource)
 	if err := o.deps.Mover.MoveFile(path, destDir); err != nil {
-		logger.Error("move failed", "error", err)
+		logger.Error(logmsg.FileMoveFailed, "error", err)
 		return o.deps.ErrorSink.MoveToErrors(path, o.deps.ErrorsDir)
 	}
 
@@ -196,81 +200,93 @@ func (o *Orchestrator) ProcessFile(path string) error {
 // It first scans for orphan files left over from previous runs, then enters
 // the watcher event loop.
 func (o *Orchestrator) Run(ctx context.Context) error {
-	// Create required directories
-	for _, dir := range []string{o.deps.ConflictDir, o.deps.ErrorsDir} {
-		if err := os.MkdirAll(dir, 0o750); err != nil {
-			return fmt.Errorf("create dir %s: %w", dir, err)
-		}
-	}
-
 	// Validate media dir access
 	if _, err := os.Stat(o.deps.MediaDir); err != nil {
-		o.deps.Logger.Error("media dir inaccessible", "dir", o.deps.MediaDir, "error", err)
+		o.deps.Logger.Error(logmsg.OrchestratorMediaDirInaccessible, "dir", o.deps.MediaDir, "error", err)
 		return fmt.Errorf("FATAL: media dir inaccessible: %w", err)
 	}
 
-	o.deps.Logger.Info("orchestrator started",
+	o.deps.Logger.Info(logmsg.OrchestratorStarted,
 		"media", o.deps.MediaDir,
 		"watch", o.deps.WatchDir,
 	)
 
-	ignoreDirs := []string{o.deps.ConflictDir, o.deps.ErrorsDir}
+	ignoreDirs := []string{o.deps.ConflictDir}
 
 	// Process orphan files left in watch dir from previous runs
 	orphans, err := ScanExisting(o.deps.WatchDir, ignoreDirs, o.deps.Logger)
 	if err != nil {
-		o.deps.Logger.Error("scan existing files failed", "error", err)
+		o.deps.Logger.Error(logmsg.OrphanScanFailed, "error", err)
 	} else if len(orphans) > 0 {
-		o.deps.Logger.Info("processing orphan files", "count", len(orphans))
+		o.deps.Logger.Info(logmsg.OrphanProcessingStarted, "count", len(orphans))
 		for _, path := range orphans {
-			o.deps.Logger.Debug("debounce started", "path", path)
+			o.deps.Logger.Debug(logmsg.DebounceStarted, "path", path)
 			if err := debounce.WaitForStability(ctx, path, o.deps.DebounceInterval, o.deps.DebounceChecks); err != nil {
 				if err == debounce.ErrFileDisappeared {
-					o.deps.Logger.Warn("orphan file disappeared during debounce", "path", path)
+					o.deps.Logger.Warn(logmsg.OrphanDebounceDisappeared, "path", path)
 					continue
 				}
-				o.deps.Logger.Error("orphan debounce error", "path", path, "error", err)
+				o.deps.Logger.Error(logmsg.OrphanDebounceFailed, "path", path, "error", err)
 				continue
 			}
-			o.deps.Logger.Debug("debounce complete", "path", path)
+			o.deps.Logger.Debug(logmsg.DebounceComplete, "path", path)
 			if err := o.ProcessFile(path); err != nil {
-				o.deps.Logger.Error("orphan process error", "path", path, "error", err)
+				o.deps.Logger.Error(logmsg.OrphanProcessFailed, "path", path, "error", err)
 			}
 		}
 	}
 
 	// Clean up any empty subdirectories left after orphan processing
 	if err := o.deps.DirCleaner.CleanEmptyDirs(o.deps.WatchDir, ignoreDirs); err != nil {
-		o.deps.Logger.Error("cleanup after orphan processing failed", "error", err)
+		o.deps.Logger.Error(logmsg.CleanupAfterOrphansFailed, "error", err)
 	}
+
+	// Periodic cleanup of empty conflicts/errors directories
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := os.Remove(o.deps.ErrorsDir); err == nil {
+					o.deps.Logger.Info(logmsg.CleanupErrorsDirRemoved)
+				}
+				if err := os.Remove(o.deps.ConflictDir); err == nil {
+					o.deps.Logger.Info(logmsg.CleanupConflictsDirRemoved)
+				}
+			}
+		}
+	}()
 
 	events := o.deps.Watcher.Events()
 	for {
 		select {
 		case <-ctx.Done():
-			o.deps.Logger.Info("orchestrator stopping")
+			o.deps.Logger.Info(logmsg.OrchestratorStopping)
 			return nil
 		case path, ok := <-events:
 			if !ok {
 				return nil
 			}
-			o.deps.Logger.Debug("debounce started", "path", path)
+			o.deps.Logger.Debug(logmsg.DebounceStarted, "path", path)
 			if err := debounce.WaitForStability(ctx, path, o.deps.DebounceInterval, o.deps.DebounceChecks); err != nil {
 				if err == debounce.ErrFileDisappeared {
-					o.deps.Logger.Warn("file disappeared during debounce", "path", path)
+					o.deps.Logger.Warn(logmsg.DebounceFileDisappeared, "path", path)
 					continue
 				}
-				o.deps.Logger.Error("debounce error", "path", path, "error", err)
+				o.deps.Logger.Error(logmsg.DebounceFailed, "path", path, "error", err)
 				continue
 			}
-			o.deps.Logger.Debug("debounce complete", "path", path)
+			o.deps.Logger.Debug(logmsg.DebounceComplete, "path", path)
 			if err := o.ProcessFile(path); err != nil {
-				o.deps.Logger.Error("process file error", "path", path, "error", err)
+				o.deps.Logger.Error(logmsg.FileProcessFailed, "path", path, "error", err)
 			}
 
 			// Clean up any empty subdirectories after processing
 			if err := o.deps.DirCleaner.CleanEmptyDirs(o.deps.WatchDir, ignoreDirs); err != nil {
-				o.deps.Logger.Error("cleanup after file processing failed", "error", err)
+				o.deps.Logger.Error(logmsg.CleanupAfterFileFailed, "error", err)
 			}
 		}
 	}

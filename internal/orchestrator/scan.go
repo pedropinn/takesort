@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/pinn/takesort/internal/logmsg"
 )
 
 // ScanExisting recursively walks dir, returning all regular files found at any
@@ -27,9 +29,9 @@ func ScanExisting(dir string, ignoreDirs []string, logger *slog.Logger) ([]strin
 
 			// Hidden directories: delete entirely and skip
 			if strings.HasPrefix(d.Name(), ".") {
-				logger.Info("deleting hidden directory", "path", path)
+				logger.Info(logmsg.DirHiddenDeleting, "path", path)
 				if removeErr := os.RemoveAll(path); removeErr != nil {
-					logger.Error("failed to delete hidden directory", "path", path, "error", removeErr)
+					logger.Error(logmsg.DirHiddenDeleteFailed, "path", path, "error", removeErr)
 				}
 				return filepath.SkipDir
 			}

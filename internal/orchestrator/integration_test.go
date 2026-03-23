@@ -23,11 +23,9 @@ func setupDirs(t *testing.T) (watchDir, mediaDir, conflictDir, errorsDir string)
 	watchDir = filepath.Join(root, "temp")
 	mediaDir = filepath.Join(root, "media")
 	conflictDir = filepath.Join(root, "temp", "conflicts")
-	errorsDir = filepath.Join(root, "temp", "errors")
+	errorsDir = filepath.Join(root, "temp", "conflicts", "errors")
 	require.NoError(t, os.MkdirAll(watchDir, 0o755))
 	require.NoError(t, os.MkdirAll(mediaDir, 0o755))
-	require.NoError(t, os.MkdirAll(conflictDir, 0o755))
-	require.NoError(t, os.MkdirAll(errorsDir, 0o755))
 	return
 }
 

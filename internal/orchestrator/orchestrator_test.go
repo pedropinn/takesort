@@ -128,7 +128,7 @@ func TestProcessFile_MP4ClassifiedAndMovedToDateFolder(t *testing.T) {
 	watchDir := filepath.Join(tmpDir, "temp")
 	mediaDir := filepath.Join(tmpDir, "media")
 	conflictDir := filepath.Join(tmpDir, "temp", "conflicts")
-	errorsDir := filepath.Join(tmpDir, "temp", "errors")
+	errorsDir := filepath.Join(tmpDir, "temp", "conflicts", "errors")
 	require.NoError(t, os.MkdirAll(watchDir, 0o755))
 
 	srcFile := filepath.Join(watchDir, "clip.mp4")
@@ -151,7 +151,7 @@ func TestProcessFile_LRFRenamedAndMovedToProxy(t *testing.T) {
 	watchDir := filepath.Join(tmpDir, "temp")
 	mediaDir := filepath.Join(tmpDir, "media")
 	conflictDir := filepath.Join(tmpDir, "temp", "conflicts")
-	errorsDir := filepath.Join(tmpDir, "temp", "errors")
+	errorsDir := filepath.Join(tmpDir, "temp", "conflicts", "errors")
 	require.NoError(t, os.MkdirAll(watchDir, 0o755))
 
 	srcFile := filepath.Join(watchDir, "DJI_0001.lrf")
@@ -173,7 +173,7 @@ func TestProcessFile_THMDeletedAfterClassification(t *testing.T) {
 	watchDir := filepath.Join(tmpDir, "temp")
 	mediaDir := filepath.Join(tmpDir, "media")
 	conflictDir := filepath.Join(tmpDir, "temp", "conflicts")
-	errorsDir := filepath.Join(tmpDir, "temp", "errors")
+	errorsDir := filepath.Join(tmpDir, "temp", "conflicts", "errors")
 	require.NoError(t, os.MkdirAll(watchDir, 0o755))
 	require.NoError(t, os.MkdirAll(mediaDir, 0o755))
 
@@ -192,7 +192,7 @@ func TestProcessFile_UnknownExtensionDeleted(t *testing.T) {
 	watchDir := filepath.Join(tmpDir, "temp")
 	mediaDir := filepath.Join(tmpDir, "media")
 	conflictDir := filepath.Join(tmpDir, "temp", "conflicts")
-	errorsDir := filepath.Join(tmpDir, "temp", "errors")
+	errorsDir := filepath.Join(tmpDir, "temp", "conflicts", "errors")
 	require.NoError(t, os.MkdirAll(watchDir, 0o755))
 	require.NoError(t, os.MkdirAll(mediaDir, 0o755))
 
@@ -213,7 +213,7 @@ func TestProcessFile_ZeroSizeStillMovedToErrors(t *testing.T) {
 	watchDir := filepath.Join(tmpDir, "temp")
 	mediaDir := filepath.Join(tmpDir, "media")
 	conflictDir := filepath.Join(tmpDir, "temp", "conflicts")
-	errorsDir := filepath.Join(tmpDir, "temp", "errors")
+	errorsDir := filepath.Join(tmpDir, "temp", "conflicts", "errors")
 	require.NoError(t, os.MkdirAll(watchDir, 0o755))
 	require.NoError(t, os.MkdirAll(mediaDir, 0o755))
 	require.NoError(t, os.MkdirAll(errorsDir, 0o755))
@@ -234,7 +234,7 @@ func TestProcessFile_NoExtensionStillMovedToErrors(t *testing.T) {
 	watchDir := filepath.Join(tmpDir, "temp")
 	mediaDir := filepath.Join(tmpDir, "media")
 	conflictDir := filepath.Join(tmpDir, "temp", "conflicts")
-	errorsDir := filepath.Join(tmpDir, "temp", "errors")
+	errorsDir := filepath.Join(tmpDir, "temp", "conflicts", "errors")
 	require.NoError(t, os.MkdirAll(watchDir, 0o755))
 	require.NoError(t, os.MkdirAll(mediaDir, 0o755))
 	require.NoError(t, os.MkdirAll(errorsDir, 0o755))
@@ -255,7 +255,7 @@ func TestProcessFile_DJIFilenameDateWinsOverModTime(t *testing.T) {
 	watchDir := filepath.Join(tmpDir, "temp")
 	mediaDir := filepath.Join(tmpDir, "media")
 	conflictDir := filepath.Join(tmpDir, "temp", "conflicts")
-	errorsDir := filepath.Join(tmpDir, "temp", "errors")
+	errorsDir := filepath.Join(tmpDir, "temp", "conflicts", "errors")
 	require.NoError(t, os.MkdirAll(watchDir, 0o755))
 
 	srcFile := filepath.Join(watchDir, "DJI_20260218094732_0004_D.MP4")
@@ -278,7 +278,7 @@ func TestProcessFile_NonDJIFileFallsBackToModTime(t *testing.T) {
 	watchDir := filepath.Join(tmpDir, "temp")
 	mediaDir := filepath.Join(tmpDir, "media")
 	conflictDir := filepath.Join(tmpDir, "temp", "conflicts")
-	errorsDir := filepath.Join(tmpDir, "temp", "errors")
+	errorsDir := filepath.Join(tmpDir, "temp", "conflicts", "errors")
 	require.NoError(t, os.MkdirAll(watchDir, 0o755))
 
 	srcFile := filepath.Join(watchDir, "clip.mp4")
@@ -300,7 +300,7 @@ func TestProcessFile_DJIProxyFileRoutedByFilenameDate(t *testing.T) {
 	watchDir := filepath.Join(tmpDir, "temp")
 	mediaDir := filepath.Join(tmpDir, "media")
 	conflictDir := filepath.Join(tmpDir, "temp", "conflicts")
-	errorsDir := filepath.Join(tmpDir, "temp", "errors")
+	errorsDir := filepath.Join(tmpDir, "temp", "conflicts", "errors")
 	require.NoError(t, os.MkdirAll(watchDir, 0o755))
 
 	srcFile := filepath.Join(watchDir, "DJI_20260218094732_0004_D.LRF")
