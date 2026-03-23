@@ -13,6 +13,7 @@ import (
 	"github.com/pinn/takesort/internal/cleanup"
 	"github.com/pinn/takesort/internal/config"
 	"github.com/pinn/takesort/internal/conflict"
+	"github.com/pinn/takesort/internal/dateextract"
 	"github.com/pinn/takesort/internal/errsink"
 	"github.com/pinn/takesort/internal/logger"
 	"github.com/pinn/takesort/internal/mover"
@@ -88,6 +89,12 @@ func (dirCleanerAdapter) CleanEmptyDirs(rootDir string, ignoreDirs []string) err
 	return cleanup.CleanEmptyDirs(rootDir, ignoreDirs)
 }
 
+type dateExtractAdapter struct{}
+
+func (dateExtractAdapter) ExtractDate(filename string) (time.Time, bool) {
+	return dateextract.ExtractDate(filename)
+}
+
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
@@ -126,6 +133,7 @@ func main() {
 		ErrorSink:        errsinkAdapter{},
 		Watcher:          w,
 		DirCleaner:       dirCleanerAdapter{},
+		DateExtractor:    dateExtractAdapter{},
 		Logger:           log,
 		MediaDir:         cfg.MediaDir,
 		WatchDir:         cfg.WatchDir,

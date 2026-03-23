@@ -10,6 +10,7 @@ import (
 	"github.com/pinn/takesort/internal/classifier"
 	"github.com/pinn/takesort/internal/cleanup"
 	"github.com/pinn/takesort/internal/conflict"
+	"github.com/pinn/takesort/internal/dateextract"
 	"github.com/pinn/takesort/internal/errsink"
 	"github.com/pinn/takesort/internal/mover"
 	"github.com/pinn/takesort/internal/orchestrator"
@@ -83,6 +84,12 @@ func (dirCleanerAdapter) CleanEmptyDirs(rootDir string, ignoreDirs []string) err
 	return cleanup.CleanEmptyDirs(rootDir, ignoreDirs)
 }
 
+type dateExtractAdapter struct{}
+
+func (dateExtractAdapter) ExtractDate(filename string) (time.Time, bool) {
+	return dateextract.ExtractDate(filename)
+}
+
 // fakeEvents implements orchestrator.EventSource with a channel.
 type fakeEvents struct {
 	ch chan string
@@ -105,6 +112,7 @@ func newTestOrchestrator(mediaDir, watchDir, conflictDir, errorsDir string) *orc
 		ErrorSink:        errsinkAdapter{},
 		Watcher:          &fakeEvents{ch: make(chan string)},
 		DirCleaner:       dirCleanerAdapter{},
+		DateExtractor:    dateExtractAdapter{},
 		Logger:           logger,
 		MediaDir:         mediaDir,
 		WatchDir:         watchDir,
@@ -239,5 +247,73 @@ func TestProcessFile_NoExtensionStillMovedToErrors(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.FileExists(t, filepath.Join(errorsDir, "noext"))
+	assert.NoFileExists(t, srcFile)
+}
+
+func TestProcessFile_DJIFilenameDateWinsOverModTime(t *testing.T) {
+	tmpDir := t.TempDir()
+	watchDir := filepath.Join(tmpDir, "temp")
+	mediaDir := filepath.Join(tmpDir, "media")
+	conflictDir := filepath.Join(tmpDir, "temp", "conflicts")
+	errorsDir := filepath.Join(tmpDir, "temp", "errors")
+	require.NoError(t, os.MkdirAll(watchDir, 0o755))
+
+	srcFile := filepath.Join(watchDir, "DJI_20260218094732_0004_D.MP4")
+	require.NoError(t, os.WriteFile(srcFile, []byte("drone video"), 0o644))
+
+	// Set ModTime to a different date than the filename date
+	modTime := time.Date(2026, 3, 22, 10, 0, 0, 0, time.UTC)
+	require.NoError(t, os.Chtimes(srcFile, modTime, modTime))
+
+	orch := newTestOrchestrator(mediaDir, watchDir, conflictDir, errorsDir)
+	err := orch.ProcessFile(srcFile)
+
+	require.NoError(t, err)
+	assert.FileExists(t, filepath.Join(mediaDir, "2026", "2026-02-18", "DJI_20260218094732_0004_D.MP4"))
+	assert.NoFileExists(t, srcFile)
+}
+
+func TestProcessFile_NonDJIFileFallsBackToModTime(t *testing.T) {
+	tmpDir := t.TempDir()
+	watchDir := filepath.Join(tmpDir, "temp")
+	mediaDir := filepath.Join(tmpDir, "media")
+	conflictDir := filepath.Join(tmpDir, "temp", "conflicts")
+	errorsDir := filepath.Join(tmpDir, "temp", "errors")
+	require.NoError(t, os.MkdirAll(watchDir, 0o755))
+
+	srcFile := filepath.Join(watchDir, "clip.mp4")
+	require.NoError(t, os.WriteFile(srcFile, []byte("video content"), 0o644))
+
+	modTime := time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)
+	require.NoError(t, os.Chtimes(srcFile, modTime, modTime))
+
+	orch := newTestOrchestrator(mediaDir, watchDir, conflictDir, errorsDir)
+	err := orch.ProcessFile(srcFile)
+
+	require.NoError(t, err)
+	assert.FileExists(t, filepath.Join(mediaDir, "2026", "2026-03-15", "clip.mp4"))
+	assert.NoFileExists(t, srcFile)
+}
+
+func TestProcessFile_DJIProxyFileRoutedByFilenameDate(t *testing.T) {
+	tmpDir := t.TempDir()
+	watchDir := filepath.Join(tmpDir, "temp")
+	mediaDir := filepath.Join(tmpDir, "media")
+	conflictDir := filepath.Join(tmpDir, "temp", "conflicts")
+	errorsDir := filepath.Join(tmpDir, "temp", "errors")
+	require.NoError(t, os.MkdirAll(watchDir, 0o755))
+
+	srcFile := filepath.Join(watchDir, "DJI_20260218094732_0004_D.LRF")
+	require.NoError(t, os.WriteFile(srcFile, []byte("proxy data"), 0o644))
+
+	// Set ModTime to a different date than the filename date
+	modTime := time.Date(2026, 3, 22, 10, 0, 0, 0, time.UTC)
+	require.NoError(t, os.Chtimes(srcFile, modTime, modTime))
+
+	orch := newTestOrchestrator(mediaDir, watchDir, conflictDir, errorsDir)
+	err := orch.ProcessFile(srcFile)
+
+	require.NoError(t, err)
+	assert.FileExists(t, filepath.Join(mediaDir, "2026", "2026-02-18", "proxy", "DJI_20260218094732_0004_D.mp4"))
 	assert.NoFileExists(t, srcFile)
 }
