@@ -6,6 +6,7 @@ services:
     volumes:
       - ./data:/media
     environment:
+      - TZ=America/Sao_Paulo
       - TAKESORT_DEBOUNCE_INTERVAL=2s
       - TAKESORT_LOG_LEVEL=info
     restart: unless-stopped
